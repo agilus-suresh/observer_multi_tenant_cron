@@ -7727,7 +7727,7 @@ const everestIncidentsCron = (clientCtx) => {
 
 const everestIndividualIncidentsCron = (clientCtx) => {
   incidents = cron.schedule(
-    "*/15 * * * *",
+    "0 2 * * *",
     () => {
       console.log("Everest Individual Incident Cron running");
       syncEverestIndividualIncidents(clientCtx);
