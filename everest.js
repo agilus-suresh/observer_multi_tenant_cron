@@ -105,7 +105,7 @@ async function syncEverestIncidents(clientCtx) {
 
       for (const incident of results) {
 
-        const orgName =  incident?.basic_info?.catalogue_name || "";
+        const orgName = incident?.basic_info?.catalogue_name || "";
 
         // ❌ Skip if organization not allowed
         if (!allowedOrganizations.has(orgName)) {
@@ -145,7 +145,8 @@ async function syncEverestIncidents(clientCtx) {
           creationTime: incident.creation_time
             ? new Date(incident.creation_time)
             : timestamp,
-          catalogueName: incident?.basic_info?.catalogue_name  || "",
+          catalogueName: incident?.basic_info?.catalogue_name || "",
+          databaseName: clientCtx.db.databaseName || ""
         });
 
 
@@ -209,17 +210,17 @@ async function syncEverestIndividualIncidents(clientCtx) {
     let totalProcessed = 0;
 
     const orgDoc = await clientCtx.db
-    .collection("everestIncidentOrganizations")
-    .findOne({});
+      .collection("everestIncidentOrganizations")
+      .findOne({});
 
-  const allowedOrganizations = new Set(
-    (orgDoc?.organization || []).map(org => org.trim())
-  );
+    const allowedOrganizations = new Set(
+      (orgDoc?.organization || []).map(org => org.trim())
+    );
 
-  if (!allowedOrganizations.size) {
-    console.log("No organizations found, skipping sync");
-    return;
-  }
+    if (!allowedOrganizations.size) {
+      console.log("No organizations found, skipping sync");
+      return;
+    }
 
     const timestamp = new Date(
       new Date(
@@ -259,7 +260,7 @@ async function syncEverestIndividualIncidents(clientCtx) {
       const bulkOps = [];
 
       for (const incident of results) {
-        const orgName =  incident?.basic_info?.catalogue_name || "";
+        const orgName = incident?.basic_info?.catalogue_name || "";
 
         // ❌ Skip if organization not allowed
         if (!allowedOrganizations.has(orgName)) {
@@ -293,6 +294,7 @@ async function syncEverestIndividualIncidents(clientCtx) {
             ? new Date(incident.creation_time)
             : timestamp,
           catalogueName: incident?.basic_info?.catalogue_name || "",
+          databaseName: clientCtx.db.databaseName || ""
         };
 
         bulkOps.push({
@@ -330,4 +332,4 @@ async function syncEverestIndividualIncidents(clientCtx) {
     );
   }
 }
-module.exports = { syncEverestIncidents , syncEverestIndividualIncidents };
+module.exports = { syncEverestIncidents, syncEverestIndividualIncidents };
