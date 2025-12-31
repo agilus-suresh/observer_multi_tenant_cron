@@ -223,8 +223,10 @@ async function startClientCrons(clientCtx) {
 		// dnacSiteTopologyDataCron(clientCtx).start();
 		// usageThousandApiCron(clientCtx).schedule = true;
 		// usageThousandApiCron(clientCtx).start();
-		// everestIncidentsCron().schedule = true;
-        // everestIncidentsCron().start()
+		// everestIncidentsCron(clientCtx).schedule = true;
+		// everestIncidentsCron(clientCtx).start()
+		// everestIndividualIncidentsCron(clientCtx).schedule = true;
+		// everestIndividualIncidentsCron(clientCtx).start();
  
 
 		// Email auth type check. Only generate OAuth Tokens if OAuth 2.0 is enabled at client.
@@ -398,8 +400,10 @@ const fetchToolConfig = async (clientCtx) => {
 	dnacSiteTopologyDataCron(clientCtx).start();
 	usageThousandApiCron(clientCtx).schedule = true;
 	usageThousandApiCron(clientCtx).start();
-	everestIncidentsCron().schedule = true;
-    everestIncidentsCron().start()
+	everestIncidentsCron(clientCtx).schedule = true;
+    everestIncidentsCron(clientCtx).start()
+    everestIndividualIncidentsCron(clientCtx).schedule = true;
+    everestIndividualIncidentsCron(clientCtx).start();
 
 	const emailType = await clientCtx.db.collection("tbl_Package").find({}, { projection: { EmailAuthType: 1 } }).toArray();
 
@@ -7707,12 +7711,12 @@ const ciscoSdwanTaskCron = (a,clientCtx) => {
 	return sdwanTask;
 };
 
-const everestIncidentsCron = () => {
+const everestIncidentsCron = (clientCtx) => {
   incidents = cron.schedule(
-    "*/60 * * * *",
+    "*/15 * * * *",
     () => {
         console.log("Everest888888888")
-      syncEverestIncidents(db);
+      syncEverestIncidents(clientCtx);
     },
     {
       scheduled: false,
@@ -7720,3 +7724,18 @@ const everestIncidentsCron = () => {
   );
   return incidents;
 };
+
+const everestIndividualIncidentsCron = (clientCtx) => {
+  incidents = cron.schedule(
+    "*/15 * * * *",
+    () => {
+      console.log("Everest Individual Incident Cron running");
+      syncEverestIndividualIncidents(clientCtx);
+    },
+    {
+      scheduled: false,
+    }
+  );
+  return incidents;
+};
+ 
