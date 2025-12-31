@@ -1,0 +1,4 @@
+{
+	"ConfigUrl": "http://localhost:4007/v1/setup/CronConfig",
+	"ClientUrl": "http://localhost:4007/v1/setup/internal/getClients"
+}
