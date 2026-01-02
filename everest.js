@@ -1,16 +1,40 @@
 const axios = require("axios");
-const EVEREST_USERNAME = "sudhanshu.kumar@agilustech.in";
-const EVEREST_PASSWORD = "Velocis@4321";
-const EVEREST_API_URL = "http://10.11.12.84:9090";
+// const EVEREST_USERNAME = "sudhanshu.kumar@agilustech.in";
+// const EVEREST_PASSWORD = "Velocis@4321";
+// const EVEREST_API_URL = "http://10.11.12.84:9090";
 const EVEREST_INCIDENT_COLLECTION = "everestIncidents";
- 
-async function getAuthToken() {
+
+async function getEverestCredentials(clientCtx) {
   try {
+    const packageData = await clientCtx.db
+      .collection("tbl_Package")
+      .findOne({});
+    return {
+      url: packageData.EverestUrl,
+      username: packageData.everestUserName,
+      password: packageData.everestPassword,
+    };
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function getAuthToken(clientCtx) {
+  try {
+    const { url, username, password } = await getEverestCredentials(clientCtx);
+
+    let validUrl = url;
+
+    if (!validUrl.endsWith('/')) {
+      validUrl += '/';
+    }
+
+    const baseUrl = `${url}ux/api-token-auth/`;
     const response = await axios.post(
-      `${EVEREST_API_URL}/ux/api-token-auth/`,
+      baseUrl,
       {
-        username: EVEREST_USERNAME,
-        password: EVEREST_PASSWORD,
+        username: username,
+        password: password,
       },
       {
         headers: {
@@ -19,17 +43,20 @@ async function getAuthToken() {
         },
       }
     );
- 
+
     if (!response.data?.token) {
       throw new Error("Token not found in response");
     }
- 
-    return response.data.token;
+
+    return {
+      token: response.data.token,
+      apiUrl: url,
+    };
   } catch (error) {
     throw new Error("Everest authentication failed");
   }
 }
- 
+
 function InsertData(json, CollectionName, db) {
   if (json._id) {
     delete json._id;
@@ -41,7 +68,7 @@ function InsertData(json, CollectionName, db) {
     i++;
   });
 }
- 
+
 async function syncEverestIncidents(clientCtx) {
   try {
     const limit = 10000;
@@ -50,24 +77,24 @@ async function syncEverestIncidents(clientCtx) {
     let offset = 0;
     let page = 1;
     let totalProcessed = 0;
- 
+
     const orgDoc = await clientCtx.db
       .collection("everestIncidentOrganizations")
       .findOne({});
- 
+
     const allowedOrganizations = new Set(
-      (orgDoc?.organization || []).map(org => org.trim())
+      (orgDoc?.organization || []).map((org) => org.trim())
     );
- 
+
     if (!allowedOrganizations.size) {
       console.log("No organizations found, skipping sync");
       return;
     }
- 
+
     const prioritySummary = {};
     const statusSummary = {};
     const stateSummary = {};
- 
+
     const timestamp = new Date(
       new Date(
         new Date(
@@ -77,16 +104,22 @@ async function syncEverestIncidents(clientCtx) {
         ).setSeconds(0)
       ).setMilliseconds(0)
     );
- 
+
     while (true) {
-      const token = await getAuthToken(clientCtx);
-      let url = `${EVEREST_API_URL}/ux/sd/inci/incident/?items_per_page=${limit}&page=${page}`;
- 
+      const { token, apiUrl } = await getAuthToken(clientCtx);
+      let validUrl = apiUrl;
+
+      // Ensure the URL ends with a '/'
+      if (!validUrl.endsWith('/')) {
+        validUrl += '/';
+      }
+      let url = `${validUrl}ux/sd/inci/incident/?items_per_page=${limit}&page=${page}`;
+
       if (page > 1) {
         offset = (page - 1) * limit;
         url += `&offset=${offset}`;
       }
- 
+
       const response = await axios.get(url, {
         headers: {
           Authorization: token,
@@ -94,30 +127,30 @@ async function syncEverestIncidents(clientCtx) {
           Accept: "application/json",
         },
       });
- 
+
       const { results = [], count } = response.data || {};
- 
+
       if (totalCount === null && typeof count === "number") {
         totalCount = count;
       }
- 
+
       if (!results.length) break;
- 
+
       for (const incident of results) {
- 
         const orgName = incident?.basic_info?.catalogue_name || "";
- 
+
         // ❌ Skip if organization not allowed
         if (!allowedOrganizations.has(orgName)) {
           continue;
         }
- 
+
         const priority = incident.priority_name || "Unknown";
-        prioritySummary[priority] =
-          (prioritySummary[priority] || 0) + 1;
-        statusSummary[incident.status_name] = (statusSummary[incident.status_name] || 0) + 1;
-        stateSummary[incident.state_name] = (stateSummary[incident.state_name] || 0) + 1;
- 
+        prioritySummary[priority] = (prioritySummary[priority] || 0) + 1;
+        statusSummary[incident.status_name] =
+          (statusSummary[incident.status_name] || 0) + 1;
+        stateSummary[incident.state_name] =
+          (stateSummary[incident.state_name] || 0) + 1;
+
         allIncidents.push({
           displayId: incident.display_id || "",
           summary: incident.summary || "",
@@ -146,50 +179,49 @@ async function syncEverestIncidents(clientCtx) {
             ? new Date(incident.creation_time)
             : timestamp,
           catalogueName: incident?.basic_info?.catalogue_name || "",
-          databaseName: clientCtx.clientId || ""
+          databaseName: clientCtx.clientId || "",
         });
- 
- 
+
         totalProcessed++;
       }
- 
+
       if (totalCount !== null && totalProcessed >= totalCount) {
         break;
       }
- 
+
       page++;
     }
- 
+
     const incidentSummary = {
       timestamp,
       data: {
         priority: prioritySummary,
         state: stateSummary,
-        status: statusSummary
-      }
+        status: statusSummary,
+      },
     };
- 
+
     const incidents = {
       timestamp,
       data: allIncidents,
     };
- 
+
     const priority = await InsertData(
       incidentSummary,
       "everestIncidentSummary",
       clientCtx.db
     );
- 
-    console.log("priority", priority)
- 
+
+    console.log("priority", priority);
+
     const all = await InsertData(
       incidents,
       EVEREST_INCIDENT_COLLECTION,
       clientCtx.db
     );
- 
-    console.log(all)
- 
+
+    console.log(all);
+
     console.log(
       `Everest incident sync completed. Total processed: ${totalProcessed}`
     );
@@ -200,7 +232,7 @@ async function syncEverestIncidents(clientCtx) {
     );
   }
 }
- 
+
 async function syncEverestIndividualIncidents(clientCtx) {
   try {
     const limit = 100;
@@ -208,20 +240,20 @@ async function syncEverestIndividualIncidents(clientCtx) {
     let offset = 0;
     let page = 1;
     let totalProcessed = 0;
- 
+
     const orgDoc = await clientCtx.db
       .collection("everestIncidentOrganizations")
       .findOne({});
- 
+
     const allowedOrganizations = new Set(
-      (orgDoc?.organization || []).map(org => org.trim())
+      (orgDoc?.organization || []).map((org) => org.trim())
     );
- 
+
     if (!allowedOrganizations.size) {
       console.log("No organizations found, skipping sync");
       return;
     }
- 
+
     const timestamp = new Date(
       new Date(
         new Date(
@@ -231,16 +263,23 @@ async function syncEverestIndividualIncidents(clientCtx) {
         ).setSeconds(0)
       ).setMilliseconds(0)
     );
- 
+
     while (true) {
-      const token = await getAuthToken(clientCtx);
-      let url = `${EVEREST_API_URL}/ux/sd/inci/incident/?items_per_page=${limit}&page=${page}`;
- 
+      const { token, apiUrl } = await getAuthToken(clientCtx);
+      let validUrl = apiUrl;
+
+      // Ensure the URL ends with a '/'
+      if (!validUrl.endsWith('/')) {
+        validUrl += '/';
+      }
+
+      let url = `${validUrl}ux/sd/inci/incident/?items_per_page=${limit}&page=${page}`;
+
       if (page > 1) {
         offset = (page - 1) * limit;
         url += `&offset=${offset}`;
       }
- 
+
       const response = await axios.get(url, {
         headers: {
           Authorization: token,
@@ -248,20 +287,20 @@ async function syncEverestIndividualIncidents(clientCtx) {
           Accept: "application/json",
         },
       });
- 
+
       const { results = [], count } = response.data || {};
- 
+
       if (totalCount === null && typeof count === "number") {
         totalCount = count;
       }
- 
+
       if (!results.length) break;
- 
+
       const bulkOps = [];
- 
+
       for (const incident of results) {
         const orgName = incident?.basic_info?.catalogue_name || "";
- 
+
         // ❌ Skip if organization not allowed
         if (!allowedOrganizations.has(orgName)) {
           continue;
@@ -272,7 +311,8 @@ async function syncEverestIndividualIncidents(clientCtx) {
           summary: incident.summary || "",
           description: incident.description || "",
           impact_service_name: incident.impact_service_name || "",
-          service_classification_name: incident.service_classification_name || "",
+          service_classification_name:
+            incident.service_classification_name || "",
           state: incident.state || "",
           status: incident.status || "",
           stateName: incident.state_name || "",
@@ -291,9 +331,9 @@ async function syncEverestIndividualIncidents(clientCtx) {
           sourceName: incident.source_name || "",
           sla: incident.sla || {},
           catalogueName: incident?.basic_info?.catalogue_name || "",
-          databaseName: clientCtx.clientId || ""
+          databaseName: clientCtx.clientId || "",
         };
- 
+
         bulkOps.push({
           updateOne: {
             filter: { displayId: incidentDoc.displayId },
@@ -302,30 +342,29 @@ async function syncEverestIndividualIncidents(clientCtx) {
               $setOnInsert: {
                 creationTime: incident.creation_time
                   ? new Date(incident.creation_time)
-                  : timestamp
-              }
+                  : timestamp,
+              },
             },
             upsert: true,
           },
         });
- 
+
         totalProcessed++;
       }
- 
+
       if (bulkOps.length) {
         await clientCtx.db
           .collection("everestIndividualIncidents")
           .bulkWrite(bulkOps, { ordered: false });
       }
- 
+
       if (totalCount !== null && totalProcessed >= totalCount) {
         break;
       }
- 
+
       page++;
     }
- 
- 
+
     console.log(
       `Everest Individual incident sync completed. Total processed: ${totalProcessed}`
     );
@@ -337,3 +376,4 @@ async function syncEverestIndividualIncidents(clientCtx) {
   }
 }
 module.exports = { syncEverestIncidents, syncEverestIndividualIncidents };
+ 
