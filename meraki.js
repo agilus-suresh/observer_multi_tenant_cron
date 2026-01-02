@@ -314,25 +314,51 @@ const GetAppCategory = function GetAppCategory(NetworkList, PackageData) {
       .finally(function () { });
   });
 };
-const CheckUsageData = function CheckUsageData(data, db) {
-  return new Promise((resolve) => {
-    let myquery = {
-      timestamp: {
-        $gte: new Date(
-          new Date(
-            new Date(new Date(Date.now()).addDays(-1).setHours(0)).setMinutes(0)
-          ).setSeconds(0)
-        ),
-      },
+// const CheckUsageData = function CheckUsageData(data, db) {
+//   return new Promise((resolve) => {
+//     let myquery = {
+//       timestamp: {
+//         $gte: new Date(
+//           new Date(
+//             new Date(new Date(Date.now()).addDays(-1).setHours(0)).setMinutes(0)
+//           ).setSeconds(0)
+//         ),
+//       },
+//     };
+//     console.log("herre , CheckUsageData");
+//     db.collection("DataUsageByAppCategory")
+//       .find(myquery)
+//       .toArray(function (err, result) {
+//         console.log(err , result)
+//         if (err) throw err;
+//         resolve(result.length);
+//       });
+//   });
+// };
+
+const CheckUsageData = async function CheckUsageData(data, db) {
+  try {
+    const startOfYesterday = new Date();
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    startOfYesterday.setHours(0, 0, 0, 0);
+
+    const myquery = {
+      timestamp: { $gte: startOfYesterday },
     };
-    db.collection("DataUsageByAppCategory")
+
+    const result = await db
+      .collection("DataUsageByAppCategory")
       .find(myquery)
-      .toArray(function (err, result) {
-        if (err) throw err;
-        resolve(result.length);
-      });
-  });
+      .toArray();
+
+    return result.length;
+  } catch (error) {
+    console.error("CheckUsageData failed:", error);
+    throw new Error("Failed to check usage data");
+  }
 };
+
+
 function SumAndFormatClients(item) {
   let obj = {};
   obj["Client"] = item.description;
@@ -437,7 +463,11 @@ const GetTraffic = function GetTraffic(NetworkList, PackageData) {
         resolve(response.data);
       })
       .catch(function (error) {
-        console.log("GetTraffic", error)
+        console.log("GetTraffic", {
+          errorStatus : error?.response?.status,
+          url: error?.response?.config?.url,
+          message: error?.response?.statusText
+        })
         resolve([])
       })
       .finally(function () { resolve([]) });
@@ -464,7 +494,7 @@ const GetmerakiDeviceChannelUtilization = function GetmerakiDeviceChannelUtiliza
         resolve(response.data);
       })
       .catch(function (error) {
-        console.log("GetmerakiDeviceuplinksLossAndLatency", error)
+        console.log("GetmerakiDeviceuplinksLossAndLatency", error?.response?.statusText)
         resolve([])
       })
       .finally(function () { resolve([]) });
